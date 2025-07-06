@@ -1,0 +1,49 @@
+// server.js
+const express = require('express');
+const multer = require('multer');
+const sharp = require('sharp');
+
+const app = express();
+const upload = multer();
+
+// ✅ endpoint para verificar si el servicio está vivo
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'Image merge service is alive' });
+});
+
+app.post('/merge', upload.array('images', 3), async (req, res) => {
+  try {
+    const buffers = req.files.map(file => file.buffer);
+
+    const images = await Promise.all(
+      buffers.map(buf => sharp(buf).resize(300).toBuffer())
+    );
+
+    const { width, height } = await sharp(images[0]).metadata();
+
+    const merged = await sharp({
+      create: {
+        width: width * images.length,
+        height,
+        channels: 3,
+        background: 'white'
+      }
+    })
+      .composite(
+        images.map((img, i) => ({ input: img, left: i * width, top: 0 }))
+      )
+      .jpeg()
+      .toBuffer();
+
+    res.set('Content-Type', 'image/jpeg');
+    res.send(merged);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error merging images');
+  }
+});
+
+const PORT = 5679;
+app.listen(PORT, () => {
+  console.log(`Image merge service listening at http://localhost:${PORT}`);
+});
